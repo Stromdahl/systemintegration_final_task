@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VehicleHotSpotBackend.Web.Models;
 using VehicleHotSpotBackend.Core.Integrations;
+using Microsoft.Data.SqlClient;
 
 namespace VehicleHotSpotBackend.Web.Controllers
 {
@@ -22,14 +23,13 @@ namespace VehicleHotSpotBackend.Web.Controllers
         }
 
         // GET: api/UserItems
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<UserItem>>> GetUserItems()
-        {
-            return await _context.UserItems.ToListAsync();
-        }
+        //[HttpGet]
+        //public async Task<ActionResult<IEnumerable<UserItem>>> GetUserItems()
+        //{
+        //    return await _context.UserItems.ToListAsync();
+        //}
 
-        [HttpGet]
-        [Route("authenticate")]
+        [HttpGet("authenticate")]
         public async Task<ActionResult<UserItem>> Login(string userName, string pwd)
         {
             HttpClient client = new HttpClient();
@@ -47,24 +47,33 @@ namespace VehicleHotSpotBackend.Web.Controllers
             return NotFound();
         }
 
+
+
         // GET: api/UserItems/5
-        [HttpGet("{id}")]
-        public async Task<ActionResult<UserItem>> GetUserItem(string id)
+        [HttpGet("search")]
+        public async Task<ActionResult<UserItem>> GetUserItem(string searchString)
         {
-            var userItem = await _context.UserItems.FindAsync(id);
+            string connectionString;
+            SqlConnection connection;
 
-            if (userItem == null)
-            {
-                return NotFound();
-            }
+            connectionString = @"Data Source=DESKTOP-2S8VSFC\SQLEXPRESS;Initial Catalog=VehicleHotSpotDb; 
+                        User ID=User;Password=password";
 
-            return userItem;
+            connection = new SqlConnection(connectionString);
+
+            connection.Open();
+
+
+            Console.WriteLine("Connected");
+            connection.Close();
+            Console.WriteLine("Disconnected");
+            return null;
         }
 
         // PUT: api/UserItems/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutUserItem(string id, UserItem userItem)
+        public async Task<IActionResult> PutUserItem(Guid id, UserItem userItem)
         {
             if (id != userItem.Id)
             {
@@ -97,6 +106,25 @@ namespace VehicleHotSpotBackend.Web.Controllers
         [HttpPost]
         public async Task<ActionResult<UserItem>> PostUserItem(UserItem userItem)
         {
+            string connectionString;
+            SqlConnection connection;
+
+            connectionString = @"Data Source=DESKTOP-2S8VSFC\SQLEXPRESS;Initial Catalog=VehicleHotSpotDb; 
+                        User ID=User;Password=password";
+
+            connection = new SqlConnection(connectionString);
+
+            connection.Open();
+
+            SqlCommand command;
+            SqlDataAdapter adapter = new SqlDataAdapter();
+            string sql = "";
+
+            sql = ""
+
+            connection.Close();
+
+
             _context.UserItems.Add(userItem);
             await _context.SaveChangesAsync();
 
@@ -120,7 +148,7 @@ namespace VehicleHotSpotBackend.Web.Controllers
             return NoContent();
         }
 
-        private bool UserItemExists(string id)
+        private bool UserItemExists(Guid id)
         {
             return _context.UserItems.Any(e => e.Id == id);
         }

@@ -2,9 +2,9 @@
 {
     public class UserItem
     {
-        public string Id { get; set; }
-        public string accessToken { get; set; }
-
-        public string customerId { get; set; }
+        public Guid Id { get; set; }
+        public string? customerId { get; set; }
+        public string? firstName { get; set; }
+        public string? lastName { get; set; }
     }
 }

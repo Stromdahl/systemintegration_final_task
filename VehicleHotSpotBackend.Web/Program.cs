@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VehicleHotSpotBackend.Web.Models;
+using VehicleHotSpotBackend.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,7 +9,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddDbContext<UserContext>(opt =>
     opt.UseInMemoryDatabase("UserList"));
+builder.Services.Configure<VehicleHotSpotDatabaseSettings>(
+    builder.Configuration.GetSection("VehicleHotSpotDb"));
 
+builder.Services.AddSingleton<DrivingDataService>();
 
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
