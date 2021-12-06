@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VehicleHotSpotBackend.Web.Models;
+using VehicleHotSpotBackend.Core.Integrations;
 
 namespace VehicleHotSpotBackend.Web.Controllers
 {
