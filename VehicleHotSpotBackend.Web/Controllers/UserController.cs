@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VehicleHotSpotBackend.Web.Models;
+using VehicleHotSpotBackend.Core.Integrations;
 
 namespace VehicleHotSpotBackend.Web.Controllers
 {
@@ -31,19 +32,7 @@ namespace VehicleHotSpotBackend.Web.Controllers
         [Route("authenticate")]
         public async Task<ActionResult<UserItem>> Login(string userName, string pwd)
         {
-            HttpClient client = new HttpClient();
-            UserItem user = null;
-            string baseUrl = "https://kyhdev.hiqcloud.net/api/cds/v1.0/user/authenticate";
-
-            HttpResponseMessage response = await client.GetAsync(baseUrl + $"?userName={userName}&pwd={pwd}");
-
-            if (response.IsSuccessStatusCode)
-            {
-                user = await response.Content.ReadAsAsync<UserItem>();
-                return user;
-            }
-
-            return NotFound();
+            var result = _cdsClient.Login(userName, pwd));
         }
 
         // GET: api/UserItems/5
