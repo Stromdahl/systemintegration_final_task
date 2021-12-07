@@ -7,8 +7,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 
 builder.Services.AddControllers();
-builder.Services.AddDbContext<UserContext>(opt =>
-    opt.UseInMemoryDatabase("UserList"));
 builder.Services.Configure<VehicleHotSpotDatabaseSettings>(
     builder.Configuration.GetSection("VehicleHotSpotDb"));
 

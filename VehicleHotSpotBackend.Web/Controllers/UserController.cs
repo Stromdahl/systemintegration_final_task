@@ -1,12 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+﻿
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using VehicleHotSpotBackend.Web.Models;
-using VehicleHotSpotBackend.Core.Integrations;
 using Microsoft.Data.SqlClient;
 
 namespace VehicleHotSpotBackend.Web.Controllers
@@ -15,19 +9,20 @@ namespace VehicleHotSpotBackend.Web.Controllers
     [ApiController]
     public class UserController : ControllerBase
     {
-        private readonly UserContext _context;
 
-        public UserController(UserContext context)
+
+        private SqlConnection connectToSqldb()
         {
-            _context = context;
-        }
+            string connectionString;
+            SqlConnection connection;
 
-        // GET: api/UserItems
-        //[HttpGet]
-        //public async Task<ActionResult<IEnumerable<UserItem>>> GetUserItems()
-        //{
-        //    return await _context.UserItems.ToListAsync();
-        //}
+            connectionString = @"Data Source=DESKTOP-2S8VSFC\SQLEXPRESS;Initial Catalog=VehicleHotSpotDb; 
+                        User ID=User;Password=password";
+
+            connection = new SqlConnection(connectionString);
+
+            return connection;
+        }
 
         [HttpGet("authenticate")]
         public async Task<ActionResult<UserItem>> Login(string userName, string pwd)
@@ -50,55 +45,73 @@ namespace VehicleHotSpotBackend.Web.Controllers
 
 
         // GET: api/UserItems/5
-        [HttpGet("search")]
-        public async Task<ActionResult<UserItem>> GetUserItem(string searchString)
+        [HttpGet("{customerId}")]
+        public async Task<ActionResult<UserItem>> GetUserItem(string customerId)
         {
-            string connectionString;
-            SqlConnection connection;
+            
+            SqlConnection connection = connectToSqldb();
 
-            connectionString = @"Data Source=DESKTOP-2S8VSFC\SQLEXPRESS;Initial Catalog=VehicleHotSpotDb; 
-                        User ID=User;Password=password";
-
-            connection = new SqlConnection(connectionString);
+            SqlCommand command;
+            SqlDataReader dataReader;
+            string sql;
 
             connection.Open();
 
+            sql = $"SELECT * from [dbo].[user] WHERE customerId = '{customerId}'";
+            command = new SqlCommand(sql, connection);
 
-            Console.WriteLine("Connected");
+            dataReader = command.ExecuteReader();
+
+            if(!dataReader.HasRows)
+            {
+                return new NotFoundResult();
+            }
+
+            dataReader.Read();
+            UserItem user = new UserItem();
+            user.customerId = (Guid)dataReader.GetValue(0);
+            user.firstName = dataReader.GetString(1);
+            user.lastName = dataReader.GetString(2);
+
             connection.Close();
-            Console.WriteLine("Disconnected");
-            return null;
+            
+            return new OkObjectResult(user);
         }
 
         // PUT: api/UserItems/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutUserItem(Guid id, UserItem userItem)
+        [HttpPut("{customerId}")]
+        public async Task<IActionResult> PutUserItem(Guid customerId, String firstName, String lastName)
         {
-            if (id != userItem.Id)
-            {
-                return BadRequest();
-            }
+            UserItem userItem = new UserItem();
+            userItem.customerId = customerId;
+            userItem.firstName = firstName;
+            userItem.lastName = lastName;
 
-            _context.Entry(userItem).State = EntityState.Modified;
+            SqlConnection connection = connectToSqldb();
+            connection.Open();
 
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!UserItemExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            string sql = 
+                $"UPDATE [dbo].[user] " +
+                $"SET firstName = '{firstName}', lastName = '{lastName}'" +
+                $"WHERE customerId = '{customerId}'";
 
-            return NoContent();
+            SqlCommand command;
+            SqlDataAdapter adapter = new SqlDataAdapter();
+
+            command = new SqlCommand(sql, connection);
+            adapter.UpdateCommand = command;
+
+            int rows = adapter.UpdateCommand.ExecuteNonQuery();
+
+            command.Dispose();
+            connection.Close();
+
+            if(rows == 0)
+            {
+                return new BadRequestResult();
+            }
+            return new OkObjectResult(userItem);
         }
 
         // POST: api/UserItems
@@ -106,51 +119,60 @@ namespace VehicleHotSpotBackend.Web.Controllers
         [HttpPost]
         public async Task<ActionResult<UserItem>> PostUserItem(UserItem userItem)
         {
-            string connectionString;
-            SqlConnection connection;
 
-            connectionString = @"Data Source=DESKTOP-2S8VSFC\SQLEXPRESS;Initial Catalog=VehicleHotSpotDb; 
-                        User ID=User;Password=password";
-
-            connection = new SqlConnection(connectionString);
-
+            SqlConnection connection = connectToSqldb();
             connection.Open();
 
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
-            string sql = "";
+            string sql = $"INSERT INTO [dbo].[user] (customerId, firstName, lastName)" +
+                $"VALUES('{userItem.customerId}', '{userItem.firstName}', '{userItem.lastName}')";
 
-            sql = ""
+            command = new SqlCommand(sql, connection);
 
-            connection.Close();
+            adapter.InsertCommand = command;
 
-
-            _context.UserItems.Add(userItem);
-            await _context.SaveChangesAsync();
-
-            //return CreatedAtAction("GetUserItem", new { id = userItem.Id }, userItem);
-            return CreatedAtAction(nameof(GetUserItem), new { id = userItem.Id }, userItem);
+            try
+            {
+                adapter.InsertCommand.ExecuteNonQuery();
+            } catch (SqlException _)
+            {
+                return new BadRequestResult();
+            } finally {
+                command.Dispose();
+                connection.Close();
+            }
+            
+            return new OkObjectResult(userItem);
         }
 
         // DELETE: api/UserItems/5
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteUserItem(long id)
+        [HttpDelete("{customerId}")]
+        public async Task<IActionResult> DeleteUserItem(Guid customerId)
         {
-            var userItem = await _context.UserItems.FindAsync(id);
-            if (userItem == null)
+
+            SqlConnection connection = connectToSqldb();
+            SqlCommand command;
+            SqlDataAdapter adapter = new SqlDataAdapter();
+            string sql = $"DELETE FROM [dbo].[user] WHERE customerId='{customerId}'";
+
+            connection.Open();
+
+            command = new SqlCommand(sql, connection);
+
+            adapter.DeleteCommand = command;
+
+
+            int rows = adapter.DeleteCommand.ExecuteNonQuery();
+
+            command.Dispose();
+            connection.Close();
+
+            if (rows == 0)
             {
-                return NotFound();
+                return new BadRequestResult();
             }
-
-            _context.UserItems.Remove(userItem);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
-
-        private bool UserItemExists(Guid id)
-        {
-            return _context.UserItems.Any(e => e.Id == id);
+            return new OkObjectResult($"User with id: {customerId} deleted");
         }
     }
 }
