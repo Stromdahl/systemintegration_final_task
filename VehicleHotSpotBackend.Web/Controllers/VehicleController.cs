@@ -91,7 +91,9 @@ namespace VehicleHotSpotBackend.Web.Controllers
             SqlConnection connection = connectToSqldb();
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
-            string sql = $"DELETE FROM dbo.vehicle WHERE vin='{vin}'";
+            string sql = 
+                $"DELETE FROM dbo.vehicle WHERE vin='{vin}';" +
+                $"DELETE FROM dbo.vehicleUserRelation WHERE vin='{vin}'";
 
             connection.Open();
 

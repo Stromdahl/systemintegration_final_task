@@ -1,6 +1,7 @@
 ﻿
 using Microsoft.AspNetCore.Mvc;
 using VehicleHotSpotBackend.Web.Models;
+using VehicleHotSpotBackend.Core;
 using Microsoft.Data.SqlClient;
 
 namespace VehicleHotSpotBackend.Web.Controllers
@@ -25,30 +26,30 @@ namespace VehicleHotSpotBackend.Web.Controllers
         }
 
         [HttpGet("authenticate")]
-        public async Task<ActionResult<UserItem>> Login(string userName, string pwd)
+        public async Task<ActionResult<LoginResponse>> Login(string userName, string pwd)
         {
             HttpClient client = new HttpClient();
-            UserItem user = null;
+            LoginResponse user = null;
             string baseUrl = "https://kyhdev.hiqcloud.net/api/cds/v1.0/user/authenticate";
 
             HttpResponseMessage response = await client.GetAsync(baseUrl + $"?userName={userName}&pwd={pwd}");
 
             if (response.IsSuccessStatusCode)
             {
-                user = await response.Content.ReadAsAsync<UserItem>();
-                return user;
+                user = await response.Content.ReadAsAsync<LoginResponse>();
+                ServiceHandler.Current.InMemoryStorage.AddToken(user.accessToken, user.id);
+                return new OkObjectResult(user);
             }
-
-            return NotFound();
+            
+            return new UnauthorizedResult();
         }
 
 
 
         // GET: api/UserItems/5
         [HttpGet("{customerId}")]
-        public async Task<ActionResult<UserItem>> GetUserItem(string customerId)
-        {
-            
+        public ActionResult GetUserItem(string customerId)
+        {   
             SqlConnection connection = connectToSqldb();
 
             SqlCommand command;
@@ -61,8 +62,10 @@ namespace VehicleHotSpotBackend.Web.Controllers
             command = new SqlCommand(sql, connection);
 
             dataReader = command.ExecuteReader();
+            command.Dispose();
+            connection.Close();
 
-            if(!dataReader.HasRows)
+            if (!dataReader.HasRows)
             {
                 return new NotFoundResult();
             }
@@ -73,15 +76,17 @@ namespace VehicleHotSpotBackend.Web.Controllers
             user.firstName = dataReader.GetString(1);
             user.lastName = dataReader.GetString(2);
 
-            connection.Close();
+            
             
             return new OkObjectResult(user);
         }
 
+
+
         // PUT: api/UserItems/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPut("{customerId}")]
-        public async Task<IActionResult> PutUserItem(Guid customerId, String firstName, String lastName)
+        public ActionResult PutUserItem(Guid customerId, String firstName, String lastName)
         {
             UserItem userItem = new UserItem();
             userItem.customerId = customerId;
@@ -117,7 +122,7 @@ namespace VehicleHotSpotBackend.Web.Controllers
         // POST: api/UserItems
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPost]
-        public async Task<ActionResult<UserItem>> PostUserItem(UserItem userItem)
+        public ActionResult PostUserItem(UserItem userItem)
         {
 
             SqlConnection connection = connectToSqldb();
@@ -146,15 +151,114 @@ namespace VehicleHotSpotBackend.Web.Controllers
             return new OkObjectResult(userItem);
         }
 
+        [HttpPost("{customerId}/{vin}")]
+        public async Task<ActionResult> PersistUserVehicleRelation(Guid customerId, string vin)
+        {
+            UserWithVehicles user = null;
+            string baseUrl = "https://kyhdev.hiqcloud.net/cds/v1.0/customer/";
+
+            HttpClient client = new HttpClient();
+
+            var request = new HttpRequestMessage()
+            {
+                RequestUri = new Uri(baseUrl + $"{customerId}"),
+                Method = HttpMethod.Get
+                
+            };
+
+            //request.Headers.Add("kyh-auth", ServiceHandler.Current.InMemoryStorage.GetUserToken(customerId));
+            request.Headers.Add("kyh-auth", "i3jsC6xofu8VIc4Znah6Acsr56T8x1GCuwjBAhYtcu2PEskZWwzQfaU6I9owlq9f");
+            HttpResponseMessage response = await client.SendAsync(request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                user = await response.Content.ReadAsAsync<UserWithVehicles>();
+
+                foreach (VehicleItem v in user.vehicles)
+                {
+                    if (vin == v.vin)
+                    {
+                        SqlConnection connection = connectToSqldb();
+                        connection.Open();
+
+
+                        SqlCommand command;
+                        SqlDataAdapter adapter = new SqlDataAdapter();
+                        string sql =
+                            $"INSERT INTO dbo.vehicleUserRelation (customerId, vin) " +
+                            $"VALUES('{customerId}', '{vin}')";
+
+                        command = new SqlCommand(sql, connection);
+
+                        adapter.InsertCommand = command;
+
+                        int rows = adapter.InsertCommand.ExecuteNonQuery();
+
+                        command.Dispose();
+                        connection.Close();
+
+                        if (rows == 0)
+                        {
+                            return new BadRequestResult();
+                        }
+                        return new OkObjectResult($"User vehicle relation created");
+                    }
+                }
+            }
+            return new UnauthorizedResult();
+        }
+
+        [HttpGet("{customerId}/vehicle")]
+        public ActionResult GetUserVehicles(Guid customerId)
+        {
+            
+
+            SqlConnection connection = connectToSqldb();
+            connection.Open();
+
+            SqlCommand command;
+            SqlDataReader dataReader;
+            string sql = 
+                $"SELECT vu.customerId, vu.vin, v.regNo " +
+                $"FROM dbo.vehicleUserRelation vu " +
+                $"INNER JOIN dbo.vehicle v on vu.vin = v.vin " +
+                $"WHERE vu.customerId = '{customerId}'";
+
+            command = new SqlCommand(sql, connection);
+            dataReader = command.ExecuteReader();
+
+            command.Dispose();
+            connection.Close();
+
+            List<VehicleUserRelation> vehicleUserRelations = new List<VehicleUserRelation>();
+
+            while (dataReader.Read())
+            {
+                vehicleUserRelations.Add(new VehicleUserRelation() { 
+                    customerId = (Guid)dataReader.GetValue(0), vin = dataReader.GetString(1), regNo = dataReader.GetString(2)});
+            }
+
+            if (vehicleUserRelations.Count == 0)
+            {
+                return new NotFoundResult();
+            }
+
+            
+
+            return new OkObjectResult(vehicleUserRelations);
+        }
+
         // DELETE: api/UserItems/5
         [HttpDelete("{customerId}")]
-        public async Task<IActionResult> DeleteUserItem(Guid customerId)
+        public ActionResult DeleteUserItem(Guid customerId)
         {
 
             SqlConnection connection = connectToSqldb();
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
-            string sql = $"DELETE FROM [dbo].[user] WHERE customerId='{customerId}'";
+            string sql = 
+                $"DELETE FROM [dbo].[user] WHERE customerId='{customerId}';" +
+                $"DELETE FROM [dbo].[vehicleUserRelation] WHERE customerId='{customerId}';";
 
             connection.Open();
 
