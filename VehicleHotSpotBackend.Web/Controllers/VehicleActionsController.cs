@@ -29,7 +29,7 @@ namespace VehicleHotSpotBackend.Web.Controllers
             return param;
         }
 
-        [HttpPost("{vin}")]
+        [HttpPost("honk/{vin}")]
         public ActionResult honk(string vin, VehiclePositionItem vehiclePositionItem)
         {
             SqlConnection connection = connectToSqldb();
@@ -42,9 +42,9 @@ namespace VehicleHotSpotBackend.Web.Controllers
 
             sql =
                 "DECLARE @point geography " +
-                "SET @point = geography::Point(@latitude, @longitude, 4326) " +
-                "SELECT v.vin, v.latitude, v.longitude, geography::Point(v.latitude, v.longitude, 4326).STDistance(@point) FROM dbo.vehicle AS v " +
-                "WHERE geography::Point(v.latitude, v.longitude, 4326).STDistance(@point) <= 100 and v.vin = @vin";
+                "SET @point = geography::Point(@longitude, @latitude, 4326) " +
+                "SELECT dbo.vehicle.vin, dbo.vehicle.latitude, dbo.vehicle.longitude, geography::Point(dbo.vehicle.latitude, dbo.vehicle.longitude, 4326).STDistance(@point) FROM dbo.vehicle " +
+                "WHERE dbo.vehicle.vin = @vin";
 
             command = new SqlCommand(sql, connection);
 
@@ -59,12 +59,103 @@ namespace VehicleHotSpotBackend.Web.Controllers
             {
                 command.Dispose();
                 connection.Close();
+                return new NotFoundObjectResult("Not found");
+            }
+
+
+            var distance = dataReader.GetDouble(3);
+
+
+            if (distance > 200)
+            {
+                command.Dispose();
+                connection.Close();
                 return new ObjectResult("Vehicle is to far away") { StatusCode = StatusCodes.Status403Forbidden };
             }
+
+
             var result = dataReader.GetString(0);
             command.Dispose();
             connection.Close();
             return new OkObjectResult(result);
+        }
+
+        [HttpGet("position/{vin}")]
+        public ActionResult GetVehiclePosition(string vin)
+        {
+            SqlConnection connection = connectToSqldb();
+
+            SqlCommand command;
+            SqlDataReader dataReader;
+            string sql;
+
+            connection.Open();
+
+            sql = $"SELECT longitude, latitude from [dbo].[vehicle] WHERE vin = @vin";
+            command = new SqlCommand(sql, connection);
+
+            command.Parameters.Add(createParameter("@vin", vin));
+
+            dataReader = command.ExecuteReader();
+
+            dataReader.Read();
+
+
+            if (!dataReader.HasRows)
+            {
+                command.Dispose();
+                connection.Close();
+
+                return new NotFoundResult();
+            }
+
+            double longitude = dataReader.GetDouble(0);
+            double latitude = dataReader.GetDouble(1);
+
+            return new OkObjectResult($"{longitude}, {latitude}");
+        }
+
+
+        [HttpGet("status/{vin}")]
+        public ActionResult GetVehicleStatus(string vin)
+        {
+            SqlConnection connection = connectToSqldb();
+
+            SqlCommand command;
+            SqlDataReader dataReader;
+            string sql;
+
+            connection.Open();
+
+            sql = $"SELECT * from [dbo].[vehicle] WHERE vin = @vin";
+            command = new SqlCommand(sql, connection);
+
+            command.Parameters.Add(createParameter("@vin", vin));
+
+            dataReader = command.ExecuteReader();
+
+            dataReader.Read();
+
+            if (!dataReader.HasRows)
+            {
+                command.Dispose();
+                connection.Close();
+
+                return new NotFoundResult();
+            }
+
+
+            VehicleStatusItem vehicleStatus = new VehicleStatusItem()
+            {
+                batteryPercentage = 50,
+                milage = 2000,
+                tirePressure = new float[4] { 3f, 3f, 3f, 3f },
+                locked = true,
+                alarmArmed = false,
+                longitude = 57.705500033177884f,
+                latitude = 11.968206796607f
+            };
+            return new OkObjectResult(vehicleStatus);
         }
     }
 }
