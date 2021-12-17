@@ -19,6 +19,14 @@ namespace VehicleHotSpotBackend.Web.Controllers
 
             return connection;
         }
+        private SqlParameter createParameter<T>(string parameterName, T value)
+        {
+            SqlParameter param = new SqlParameter();
+            param.ParameterName = parameterName;
+            param.Value = value;
+            return param;
+        }
+
 
         [HttpGet("{vin}")]
         public async Task<ActionResult<VehicleItem>> GetVehicleItem(string vin)
@@ -31,8 +39,11 @@ namespace VehicleHotSpotBackend.Web.Controllers
 
             connection.Open();
 
-            sql = $"SELECT * from [dbo].[vehicle] WHERE vin = '{vin}'";
+            sql = $"SELECT * from [dbo].[vehicle] WHERE vin = @vin";
             command = new SqlCommand(sql, connection);
+
+            command.Parameters.Add(createParameter("@vin", vin));
+
 
             dataReader = command.ExecuteReader();
 
@@ -46,6 +57,7 @@ namespace VehicleHotSpotBackend.Web.Controllers
             vehicle.vin = dataReader.GetString(0);
             vehicle.regNo = dataReader.GetString(1);
 
+            command.Dispose();
             connection.Close();
 
             return new OkObjectResult(vehicle);
@@ -61,9 +73,11 @@ namespace VehicleHotSpotBackend.Web.Controllers
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
             string sql = $"INSERT INTO dbo.vehicle (vin, regNo)" +
-                $"VALUES('{vehicleItem.vin}', '{vehicleItem.regNo}')";
+                $"VALUES(@vin, @regNo)";
 
             command = new SqlCommand(sql, connection);
+            command.Parameters.Add(createParameter("@vin", vehicleItem.vin));
+            command.Parameters.Add(createParameter("@regNo", vehicleItem.regNo));
 
             adapter.InsertCommand = command;
 
@@ -92,12 +106,14 @@ namespace VehicleHotSpotBackend.Web.Controllers
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
             string sql = 
-                $"DELETE FROM dbo.vehicle WHERE vin='{vin}';" +
-                $"DELETE FROM dbo.vehicleUserRelation WHERE vin='{vin}'";
+                $"DELETE FROM dbo.vehicle WHERE vin=@vin;" +
+                $"DELETE FROM dbo.vehicleUserRelation WHERE vin=@vin";
 
             connection.Open();
 
             command = new SqlCommand(sql, connection);
+
+            command.Parameters.Add(createParameter("@vin", vin));
 
             adapter.DeleteCommand = command;
 

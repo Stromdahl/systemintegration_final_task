@@ -37,10 +37,10 @@ namespace VehicleHotSpotBackend.Web.Controllers
             if (response.IsSuccessStatusCode)
             {
                 user = await response.Content.ReadAsAsync<LoginResponse>();
-                ServiceHandler.Current.InMemoryStorage.AddToken(user.accessToken, user.id);
+                ServiceHandler.Current.InMemoryStorage.AddToken(user.accessToken, user.customerId);
                 return new OkObjectResult(user);
             }
-            
+
             return new UnauthorizedResult();
         }
 
@@ -49,7 +49,9 @@ namespace VehicleHotSpotBackend.Web.Controllers
         // GET: api/UserItems/5
         [HttpGet("{customerId}")]
         public ActionResult GetUserItem(string customerId)
-        {   
+        {
+
+
             SqlConnection connection = connectToSqldb();
 
             SqlCommand command;
@@ -58,30 +60,42 @@ namespace VehicleHotSpotBackend.Web.Controllers
 
             connection.Open();
 
-            sql = $"SELECT * from [dbo].[user] WHERE customerId = '{customerId}'";
+            sql = $"SELECT * from [dbo].[user] WHERE customerId = @customerId";
             command = new SqlCommand(sql, connection);
 
+            command.Parameters.Add(createParameter("@customerId", customerId));
+
             dataReader = command.ExecuteReader();
-            command.Dispose();
-            connection.Close();
+
+            dataReader.Read();
+
 
             if (!dataReader.HasRows)
             {
+                command.Dispose();
+                connection.Close();
+
                 return new NotFoundResult();
             }
 
-            dataReader.Read();
             UserItem user = new UserItem();
             user.customerId = (Guid)dataReader.GetValue(0);
             user.firstName = dataReader.GetString(1);
             user.lastName = dataReader.GetString(2);
 
-            
-            
+            command.Dispose();
+            connection.Close();
+
             return new OkObjectResult(user);
         }
 
-
+        private SqlParameter createParameter<T>(string parameterName, T value)
+        {
+            SqlParameter param = new SqlParameter();
+            param.ParameterName = parameterName;
+            param.Value = value;
+            return param;
+        }
 
         // PUT: api/UserItems/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
@@ -96,15 +110,23 @@ namespace VehicleHotSpotBackend.Web.Controllers
             SqlConnection connection = connectToSqldb();
             connection.Open();
 
-            string sql = 
+
+
+            string sql =
                 $"UPDATE [dbo].[user] " +
-                $"SET firstName = '{firstName}', lastName = '{lastName}'" +
-                $"WHERE customerId = '{customerId}'";
+                $"SET firstName = @firstName, lastName = @lastName " +
+                $"WHERE customerId = @customerId";
 
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
 
             command = new SqlCommand(sql, connection);
+
+
+            command.Parameters.Add(createParameter("@firstName", firstName));
+            command.Parameters.Add(createParameter("@lastName", lastName));
+            command.Parameters.Add(createParameter("@customerId", customerId));
+
             adapter.UpdateCommand = command;
 
             int rows = adapter.UpdateCommand.ExecuteNonQuery();
@@ -112,7 +134,7 @@ namespace VehicleHotSpotBackend.Web.Controllers
             command.Dispose();
             connection.Close();
 
-            if(rows == 0)
+            if (rows == 0)
             {
                 return new BadRequestResult();
             }
@@ -131,9 +153,13 @@ namespace VehicleHotSpotBackend.Web.Controllers
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
             string sql = $"INSERT INTO [dbo].[user] (customerId, firstName, lastName)" +
-                $"VALUES('{userItem.customerId}', '{userItem.firstName}', '{userItem.lastName}')";
+                $"VALUES(@customerId, @firstName, @lastName)";
 
             command = new SqlCommand(sql, connection);
+
+            command.Parameters.Add(createParameter("@firstName", userItem.firstName));
+            command.Parameters.Add(createParameter("@lastName", userItem.lastName));
+            command.Parameters.Add(createParameter("@customerId", userItem.customerId));
 
             adapter.InsertCommand = command;
 
@@ -147,7 +173,7 @@ namespace VehicleHotSpotBackend.Web.Controllers
                 command.Dispose();
                 connection.Close();
             }
-            
+
             return new OkObjectResult(userItem);
         }
 
@@ -163,11 +189,11 @@ namespace VehicleHotSpotBackend.Web.Controllers
             {
                 RequestUri = new Uri(baseUrl + $"{customerId}"),
                 Method = HttpMethod.Get
-                
+
             };
 
-            //request.Headers.Add("kyh-auth", ServiceHandler.Current.InMemoryStorage.GetUserToken(customerId));
-            request.Headers.Add("kyh-auth", "i3jsC6xofu8VIc4Znah6Acsr56T8x1GCuwjBAhYtcu2PEskZWwzQfaU6I9owlq9f");
+            request.Headers.Add("kyh-auth", ServiceHandler.Current.InMemoryStorage.GetUserToken(customerId));
+            //request.Headers.Add("kyh-auth", "i3jsC6xofu8VIc4Znah6Acsr56T8x1GCuwjBAhYtcu2PEskZWwzQfaU6I9owlq9f");
             HttpResponseMessage response = await client.SendAsync(request);
 
             if (response.IsSuccessStatusCode)
@@ -185,10 +211,20 @@ namespace VehicleHotSpotBackend.Web.Controllers
                         SqlCommand command;
                         SqlDataAdapter adapter = new SqlDataAdapter();
                         string sql =
-                            $"INSERT INTO dbo.vehicleUserRelation (customerId, vin) " +
-                            $"VALUES('{customerId}', '{vin}')";
+                            "BEGIN " +
+                                "IF NOT EXISTS (SELECT * FROM dbo.vehicleUserRelation " +
+                                    "WHERE customerId = @customerId " +
+                                    "AND vin = @vin) " +
+                                "BEGIN " +
+                                    "INSERT INTO dbo.vehicleUserRelation(customerId, vin) " +
+                                    "VALUES(@customerId, @vin) " +
+                                "END " +
+                            "END";
 
                         command = new SqlCommand(sql, connection);
+
+                        command.Parameters.Add(createParameter("@customerId", customerId));
+                        command.Parameters.Add(createParameter("@vin", vin));
 
                         adapter.InsertCommand = command;
 
@@ -201,11 +237,44 @@ namespace VehicleHotSpotBackend.Web.Controllers
                         {
                             return new BadRequestResult();
                         }
-                        return new OkObjectResult($"User vehicle relation created");
+                        return new OkObjectResult($"Success");
                     }
                 }
             }
             return new UnauthorizedResult();
+        }
+
+        [HttpDelete("{customerId}/{vin}")]
+        public ActionResult DeleteUserVehicleRelation(Guid customerId, string vin)
+        {
+
+            SqlConnection connection = connectToSqldb();
+            connection.Open();
+
+
+            SqlCommand command;
+            SqlDataAdapter adapter = new SqlDataAdapter();
+            string sql = "DELETE FROM dbo.vehicleUserRelation WHERE vin = @vin and customerId = @customerId";
+
+            command = new SqlCommand(sql, connection);
+
+
+            command.Parameters.Add(createParameter("@customerId", customerId));
+            command.Parameters.Add(createParameter("@vin", vin));
+
+            adapter.DeleteCommand = command;
+
+            int rows = adapter.DeleteCommand.ExecuteNonQuery();
+
+            command.Dispose();
+            connection.Close();
+
+            if(rows > 0)
+            {
+                return new OkObjectResult("Success");
+                
+            }
+            return new BadRequestResult();
         }
 
         [HttpGet("{customerId}/vehicle")]
@@ -222,13 +291,13 @@ namespace VehicleHotSpotBackend.Web.Controllers
                 $"SELECT vu.customerId, vu.vin, v.regNo " +
                 $"FROM dbo.vehicleUserRelation vu " +
                 $"INNER JOIN dbo.vehicle v on vu.vin = v.vin " +
-                $"WHERE vu.customerId = '{customerId}'";
+                $"WHERE vu.customerId = @customerId";
 
             command = new SqlCommand(sql, connection);
+            command.Parameters.Add(createParameter("@customerId", customerId));
             dataReader = command.ExecuteReader();
 
-            command.Dispose();
-            connection.Close();
+            
 
             List<VehicleUserRelation> vehicleUserRelations = new List<VehicleUserRelation>();
 
@@ -238,12 +307,13 @@ namespace VehicleHotSpotBackend.Web.Controllers
                     customerId = (Guid)dataReader.GetValue(0), vin = dataReader.GetString(1), regNo = dataReader.GetString(2)});
             }
 
+            command.Dispose();
+            connection.Close();
+
             if (vehicleUserRelations.Count == 0)
             {
                 return new NotFoundResult();
             }
-
-            
 
             return new OkObjectResult(vehicleUserRelations);
         }
@@ -257,15 +327,15 @@ namespace VehicleHotSpotBackend.Web.Controllers
             SqlCommand command;
             SqlDataAdapter adapter = new SqlDataAdapter();
             string sql = 
-                $"DELETE FROM [dbo].[user] WHERE customerId='{customerId}';" +
-                $"DELETE FROM [dbo].[vehicleUserRelation] WHERE customerId='{customerId}';";
+                "DELETE FROM [dbo].[user] WHERE customerId=@customerId;" +
+                "DELETE FROM [dbo].[vehicleUserRelation] WHERE customerId=@customerId;";
 
             connection.Open();
-
             command = new SqlCommand(sql, connection);
 
-            adapter.DeleteCommand = command;
+            command.Parameters.Add(createParameter("@customerId", customerId));
 
+            adapter.DeleteCommand = command;
 
             int rows = adapter.DeleteCommand.ExecuteNonQuery();
 

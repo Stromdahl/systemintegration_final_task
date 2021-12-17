@@ -3,7 +3,7 @@
     public class LoginResponse
     {
         public string accessToken { get; set; }
-        public Guid id { get; set; }
+        public Guid customerId { get; set; }
         public string displayName { get; set; }
     }
 }
